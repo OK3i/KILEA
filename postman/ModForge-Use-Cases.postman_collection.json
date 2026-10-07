@@ -1,0 +1,352 @@
+{
+  "info": {
+    "_postman_id": "b1a74a8a-9981-4d5c-a028-8b8c62ae5f11",
+    "name": "ModForge - Core Use Cases",
+    "description": "End-to-end API checks for registration/login, role enforcement, projects, versions, catalog search, and duplicate review prevention. Requires the development seed data.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api" },
+    { "key": "authorEmail", "value": "author@modforge.local" },
+    { "key": "authorPassword", "value": "password123" },
+    { "key": "testUserEmail", "value": "" },
+    { "key": "userToken", "value": "" },
+    { "key": "authorToken", "value": "" },
+    { "key": "gameId", "value": "" },
+    { "key": "categoryId", "value": "" },
+    { "key": "projectName", "value": "" },
+    { "key": "projectId", "value": "" },
+    { "key": "versionId", "value": "" },
+    { "key": "reviewId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Find seeded game",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/games"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Games are available', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const game = pm.response.json().find((item) => item.name === 'The Witcher 3');",
+              "  pm.expect(game, 'seed The Witcher 3 before running').to.exist;",
+              "  pm.collectionVariables.set('gameId', String(game.id));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Find seeded category",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/categories"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Graphics category is available', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const category = pm.response.json().find((item) => item.name === 'Графика');",
+              "  pm.expect(category, 'seed the Графика category before running').to.exist;",
+              "  pm.collectionVariables.set('categoryId', String(category.id));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Register regular user and receive JWT",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"E2E Test User\",\n  \"email\": \"{{testUserEmail}}\",\n  \"password\": \"password123\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/auth/register"
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('testUserEmail', 'e2e+' + Date.now() + '@modforge.local');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Registration returns a bearer JWT', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.accessToken).to.be.a('string').and.not.empty;",
+              "  pm.collectionVariables.set('userToken', body.accessToken);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Log in regular user and receive JWT",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{testUserEmail}}\",\n  \"password\": \"password123\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/auth/login"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Login returns a bearer JWT', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.accessToken).to.be.a('string').and.not.empty;",
+              "  pm.collectionVariables.set('userToken', body.accessToken);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Log in seeded author",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{authorEmail}}\",\n  \"password\": \"{{authorPassword}}\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/auth/login"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Seeded author receives a JWT', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.accessToken).to.be.a('string').and.not.empty;",
+              "  pm.collectionVariables.set('authorToken', body.accessToken);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Regular user cannot create a project",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{userToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"gameId\": {{gameId}},\n  \"categoryId\": {{categoryId}},\n  \"name\": \"Forbidden E2E Project\",\n  \"description\": \"This request must be rejected for a regular user.\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/projects"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Regular user is forbidden from creating projects', function () {",
+              "  pm.response.to.have.status(403);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Author creates a project",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authorToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"gameId\": {{gameId}},\n  \"categoryId\": {{categoryId}},\n  \"name\": \"{{projectName}}\",\n  \"description\": \"A project created by the ModForge use-case collection.\",\n  \"requirements\": \"The Witcher 3\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/projects"
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('projectName', 'E2E Mod ' + Date.now());"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Author can create a project', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const project = pm.response.json();",
+              "  pm.expect(project.id).to.exist;",
+              "  pm.collectionVariables.set('projectId', String(project.id));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Author adds a project version",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{authorToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"version\": \"1.0.0\",\n  \"description\": \"Initial E2E release.\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/projects/{{projectId}}/versions"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Author can add a version to the new project', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const version = pm.response.json();",
+              "  pm.expect(version.id).to.exist;",
+              "  pm.collectionVariables.set('versionId', String(version.id));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Find the created project in the catalog",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/projects?q={{projectName}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Catalog search returns the new project', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const result = pm.response.json();",
+              "  pm.expect(result.items).to.be.an('array');",
+              "  pm.expect(result.items.some((project) => String(project.id) === pm.collectionVariables.get('projectId'))).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. User publishes a review",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{userToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Verified by the ModForge use-case collection.\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/reviews/projects/{{projectId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('User can publish the first review', function () {",
+              "  pm.response.to.have.status(201);",
+              "  const review = pm.response.json();",
+              "  pm.expect(review.id).to.exist;",
+              "  pm.collectionVariables.set('reviewId', String(review.id));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. User cannot review the same project twice",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{userToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"rating\": 4,\n  \"comment\": \"This duplicate review must be rejected.\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/reviews/projects/{{projectId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('A duplicate review returns 409 Conflict', function () {",
+              "  pm.response.to.have.status(409);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
